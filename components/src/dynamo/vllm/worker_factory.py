@@ -34,6 +34,7 @@ from .handlers import (
     get_dp_range_for_worker,
 )
 from .health_check import VllmHealthCheckPayload, VllmPrefillHealthCheckPayload
+from .instrumented_scheduler import ENV_FPM_BENCHMARK_OUTPUT_PATH, ENV_FPM_WORKER_ID
 from .multimodal_handlers import EncodeWorkerHandler
 from .publisher import StatLoggerFactory
 
@@ -45,7 +46,9 @@ EngineSetupResult = tuple[AsyncLLM, VllmConfig, Any, Any, LLMBackendMetrics]
 
 async def _wait_and_load_benchmark(bench_cfg: dict, vllm_config: VllmConfig) -> dict:
     """Wait for benchmark result files and aggregate across DP ranks."""
-    base_path = Path(bench_cfg["output_path"])
+    base_path = Path(
+        os.environ.get(ENV_FPM_BENCHMARK_OUTPUT_PATH, bench_cfg["output_path"])
+    )
     timeout = int(bench_cfg.get("timeout", 300))
 
     try:
@@ -277,7 +280,7 @@ class WorkerFactory:
                 prometheus_temp_dir,
                 component_gauges,
             ) = snapshot_engine
-            vllm_config.additional_config["fpm_worker_id"] = fpm_worker_id
+            os.environ[ENV_FPM_WORKER_ID] = fpm_worker_id
             # Factory is created after unpack so component_gauges is available
             factory = StatLoggerFactory(
                 endpoint=generate_endpoint,
@@ -506,7 +509,7 @@ class WorkerFactory:
             # because the engine was forked before the runtime existed.
             # Propagating the new ID to the child requires shared memory or
             # a restart of the EngineCore process.
-            vllm_config.additional_config["fpm_worker_id"] = fpm_worker_id
+            os.environ[ENV_FPM_WORKER_ID] = fpm_worker_id
         else:
             (
                 engine_client,
