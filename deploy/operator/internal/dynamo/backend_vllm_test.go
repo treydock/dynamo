@@ -721,6 +721,7 @@ func TestVLLMBackend_UpdatePodSpec(t *testing.T) {
 		multinodeDeployer   MultinodeDeployer
 		initialPodSpec      *corev1.PodSpec
 		expectInitContainer bool
+		expectedLeaderPort  string
 		expectedInitImage   string
 		expectedLeaderHost  string
 	}{
@@ -731,6 +732,7 @@ func TestVLLMBackend_UpdatePodSpec(t *testing.T) {
 			multinodeDeployer:   &GroveMultinodeDeployer{},
 			initialPodSpec:      mpMultinodePodSpec("vllm:latest"),
 			expectInitContainer: true,
+			expectedLeaderPort:  commonconsts.VLLMMpMasterPort,
 			expectedInitImage:   "vllm:latest",
 			expectedLeaderHost:  "${GROVE_PCSG_NAME}-${GROVE_PCSG_INDEX}-test-service-ldr-0.${GROVE_HEADLESS_SERVICE}",
 		},
@@ -741,6 +743,7 @@ func TestVLLMBackend_UpdatePodSpec(t *testing.T) {
 			multinodeDeployer:   &LWSMultinodeDeployer{},
 			initialPodSpec:      mpMultinodePodSpec("vllm:v2"),
 			expectInitContainer: true,
+			expectedLeaderPort:  commonconsts.VLLMMpMasterPort,
 			expectedInitImage:   "vllm:v2",
 			expectedLeaderHost:  "${LWS_LEADER_ADDRESS}",
 		},
@@ -759,6 +762,7 @@ func TestVLLMBackend_UpdatePodSpec(t *testing.T) {
 				},
 			},
 			expectInitContainer: true,
+			expectedLeaderPort:  commonconsts.VLLMMpMasterPort,
 			expectedInitImage:   "vllm:command",
 			expectedLeaderHost:  "${GROVE_PCSG_NAME}-${GROVE_PCSG_INDEX}-test-service-ldr-0.${GROVE_HEADLESS_SERVICE}",
 		},
@@ -781,6 +785,7 @@ func TestVLLMBackend_UpdatePodSpec(t *testing.T) {
 				},
 			},
 			expectInitContainer: true,
+			expectedLeaderPort:  commonconsts.VLLMMpMasterPort,
 			expectedInitImage:   "vllm:shell-command",
 			expectedLeaderHost:  "${GROVE_PCSG_NAME}-${GROVE_PCSG_INDEX}-test-service-ldr-0.${GROVE_HEADLESS_SERVICE}",
 		},
@@ -820,7 +825,10 @@ func TestVLLMBackend_UpdatePodSpec(t *testing.T) {
 					},
 				},
 			},
-			expectInitContainer: false,
+			expectInitContainer: true,
+			expectedLeaderPort:  VLLMPort,
+			expectedInitImage:   "vllm:latest",
+			expectedLeaderHost:  "${GROVE_PCSG_NAME}-${GROVE_PCSG_INDEX}-test-service-ldr-0.${GROVE_HEADLESS_SERVICE}",
 		},
 		{
 			name:          "single node does not inject init container",
@@ -850,6 +858,7 @@ func TestVLLMBackend_UpdatePodSpec(t *testing.T) {
 				return podSpec
 			}(),
 			expectInitContainer: true,
+			expectedLeaderPort:  commonconsts.VLLMMpMasterPort,
 			expectedInitImage:   "vllm:latest",
 			expectedLeaderHost:  "${GROVE_PCSG_NAME}-${GROVE_PCSG_INDEX}-test-service-ldr-0.${GROVE_HEADLESS_SERVICE}",
 		},
@@ -868,12 +877,12 @@ func TestVLLMBackend_UpdatePodSpec(t *testing.T) {
 				g.Expect(tt.initialPodSpec.Volumes).To(gomega.HaveLen(initialVolCount + 1))
 
 				injected := tt.initialPodSpec.InitContainers[len(tt.initialPodSpec.InitContainers)-1]
-				g.Expect(injected.Name).To(gomega.Equal("wait-for-leader-mp"))
+				g.Expect(injected.Name).To(gomega.Equal("wait-for-leader"))
 				g.Expect(injected.Image).To(gomega.Equal(tt.expectedInitImage))
 
 				expectedCmd := fmt.Sprintf(
 					`export LEADER_HOST="%s" LEADER_PORT="%s" && exec python3 /scripts/wait-for-leader.py`,
-					tt.expectedLeaderHost, commonconsts.VLLMMpMasterPort)
+					tt.expectedLeaderHost, tt.expectedLeaderPort)
 				g.Expect(injected.Command).To(gomega.Equal([]string{"sh", "-c", expectedCmd}))
 				g.Expect(injected.Env).To(gomega.BeEmpty())
 
